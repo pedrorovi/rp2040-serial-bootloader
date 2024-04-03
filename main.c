@@ -38,7 +38,7 @@
 #define UART_RX_PIN 9
 #define UART_BAUD 115200
 
-#define IMAGE_HEADER_OFFSET_1 (16 * 1024)
+#define IMAGE_HEADER_OFFSET_1 (12 * 1024)
 #define IMAGE_HEADER_OFFSET_2 (1024 * 1024)
 
 #define WRITE_ADDR_MIN (XIP_BASE + IMAGE_HEADER_OFFSET_1 + FLASH_SECTOR_SIZE)
@@ -57,12 +57,11 @@ static void reset_peripherals(void) {
                   RESETS_RESET_PLL_SYS_BITS));
 }
 
-static void jump_to_vtor(uint32_t vtor) {
+static void jump_to_vtor(uint32_t vtor, uint32_t reset_vector) {
     // Derived from the Leaf Labs Cortex-M3 bootloader.
     // Copyright (c) 2010 LeafLabs LLC.
     // Modified 2021 Brian Starkey <stark3y@gmail.com>
     // Originally under The MIT License
-    uint32_t reset_vector = *(volatile uint32_t*)(vtor + 0x04);
 
     SCB->VTOR = (volatile uint32_t)(vtor);
 
@@ -115,15 +114,17 @@ static void uint32_to_string(const uint32_t val, char* buffer) {
     // buffer must be at least 9 bytes long
     // without snprintf
     const char hex[] = "0123456789abcdef";
-    buffer[0] = hex[(val >> 28) & 0xf];
-    buffer[1] = hex[(val >> 24) & 0xf];
-    buffer[2] = hex[(val >> 20) & 0xf];
-    buffer[3] = hex[(val >> 16) & 0xf];
-    buffer[4] = hex[(val >> 12) & 0xf];
-    buffer[5] = hex[(val >> 8) & 0xf];
-    buffer[6] = hex[(val >> 4) & 0xf];
-    buffer[7] = hex[val & 0xf];
-    buffer[8] = 0;
+    buffer[0] = '0';
+    buffer[1] = 'x';
+    buffer[2] = hex[(val >> 28) & 0xf];
+    buffer[3] = hex[(val >> 24) & 0xf];
+    buffer[4] = hex[(val >> 20) & 0xf];
+    buffer[5] = hex[(val >> 16) & 0xf];
+    buffer[6] = hex[(val >> 12) & 0xf];
+    buffer[7] = hex[(val >> 8) & 0xf];
+    buffer[8] = hex[(val >> 4) & 0xf];
+    buffer[9] = hex[val & 0xf];
+    buffer[10] = 0;
 }
 
 static bool image_header_ok(struct image_header* hdr) {
@@ -180,59 +181,72 @@ static bool should_stay_in_bootloader() {
     return wd_says_so;
 }
 
-int main(void) {
-    gpio_init(PICO_DEFAULT_LED_PIN);
-    gpio_set_dir(PICO_DEFAULT_LED_PIN, GPIO_OUT);
-    gpio_put(PICO_DEFAULT_LED_PIN, 1);
+static void init_gpio(const uint8_t gpio) {
+    gpio_init(gpio);
+    gpio_set_dir(gpio, GPIO_OUT);
+    gpio_put(gpio, 1);
+}
 
-    gpio_init(23);
-    gpio_set_dir(23, GPIO_OUT);
-    gpio_put(23, 1);
-
-    gpio_init(2);
-    gpio_set_dir(2, GPIO_OUT);
-    gpio_put(2, 1);
-
-    sleep_ms(10);
-
+static void init_uart() {
     uart_init(uart1, UART_BAUD);
     gpio_set_function(UART_TX_PIN, GPIO_FUNC_UART);
     gpio_set_function(UART_RX_PIN, GPIO_FUNC_UART);
     uart_set_hw_flow(uart1, false, false);
+}
+
+int main(void) {
+    init_gpio(PICO_DEFAULT_LED_PIN);
+    init_gpio(23);
+    init_gpio(2);
+    init_uart();
+    sleep_ms(100);
 
     uart_puts(uart1, "Hello, World!\r\n");
     sleep_ms(100);
 
-    // struct image_header* hdr_1 = (struct image_header*)(XIP_BASE + IMAGE_HEADER_OFFSET_1);
-    // const bool hdr_1_ok = image_header_ok(hdr_1);
-    // sleep_ms(100);
-    // struct image_header* hdr_2 = (struct image_header*)(XIP_BASE + IMAGE_HEADER_OFFSET_2);
-    // const bool hdr_2_ok = image_header_ok(hdr_2);
-    // sleep_ms(100);
+    uint32_t vtor = (XIP_BASE + IMAGE_HEADER_OFFSET_1);
+    // uint32_t vtor = *((uint32_t*)(XIP_BASE + IMAGE_HEADER_OFFSET_1));
+    char text[32];
+    uart_puts(uart1, "VTOR: ");
+    uint32_to_string(XIP_BASE + IMAGE_HEADER_OFFSET_1, text);
+    uart_puts(uart1, text);
+    uart_puts(uart1, " - ");
+    uint32_to_string(vtor, text);
+    uart_puts(uart1, text);
+    uart_puts(uart1, "\r\n");
 
-    uart_puts(uart1, "Bootloader\r\n");
+    // uint32_t reset_vtor = XIP_BASE + IMAGE_HEADER_OFFSET_1 + 0x04;
+    uint32_t reset_vtor = *((uint32_t*)(XIP_BASE + IMAGE_HEADER_OFFSET_1 + 0x04));
+    uart_puts(uart1, "Reset VTOR: ");
+    uint32_to_string(XIP_BASE + IMAGE_HEADER_OFFSET_1 + 0x04, text);
+    uart_puts(uart1, text);
+    uart_puts(uart1, " - ");
+    uint32_to_string(reset_vtor, text);
+    uart_puts(uart1, text);
+    uart_puts(uart1, "\r\n");
     sleep_ms(100);
 
-    // if (/* !should_stay_in_bootloader()  &&*/ hdr_1_ok) {
-    uart_puts(uart1, "goto header 1\r\n");
-    sleep_ms(100);
-
-    uint32_t vtor = *((uint32_t*)(XIP_BASE + IMAGE_HEADER_OFFSET_1));
     disable_interrupts();
     reset_peripherals();
-    jump_to_vtor(XIP_BASE + IMAGE_HEADER_OFFSET_1);
-    // }
+    jump_to_vtor(vtor, reset_vtor);
 
-    // if (/* should_stay_in_bootloader() &&  */ hdr_2_ok) {
-    //     uart_puts(uart1, "goto header 2\r\n");
+    // In an assembly snippet . . .
+    // Set VTOR register, set stack pointer, and jump to reset
 
-    //     uint32_t vtor = *((uint32_t*)(XIP_BASE + IMAGE_HEADER_OFFSET_2));
-    //     disable_interrupts();
-    //     reset_peripherals();
-    //     jump_to_vtor(vtor);
-    // }
+    /* asm volatile(
+        "mov r0, %[start]\n"
+        "ldr r1, =%[vtable]\n"
+        "str r0, [r1]\n"
+        "ldmia r0, {r0, r1}\n"
+        "msr msp, r0\n"
+        "bx r1\n"
+        :
+        : [start] "r"(XIP_BASE + IMAGE_HEADER_OFFSET_1), [vtable] "X"(PPB_BASE + M0PLUS_VTOR_OFFSET)
+        :);
+    */
 
-    // DBG_PRINTF_INIT();
+    uart_puts(uart1, "Power off . . .\r\n");
+    gpio_put(23, 0);
 
     return 0;
 }

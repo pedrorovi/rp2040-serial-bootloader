@@ -38,7 +38,7 @@
 #define UART_RX_PIN 9
 #define UART_BAUD 115200
 
-#define IMAGE_HEADER_OFFSET_1 (12 * 1024)
+#define IMAGE_HEADER_OFFSET_1 (16 * 1024)
 #define IMAGE_HEADER_OFFSET_2 (1024 * 1024)
 
 #define WRITE_ADDR_MIN (XIP_BASE + IMAGE_HEADER_OFFSET_1 + FLASH_SECTOR_SIZE)
@@ -57,11 +57,14 @@ static void reset_peripherals(void) {
                   RESETS_RESET_PLL_SYS_BITS));
 }
 
-static void jump_to_vtor(uint32_t vtor, uint32_t reset_vector) {
+static void jump_to_vtor(uint32_t vtor /* , uint32_t reset_vector */) {
     // Derived from the Leaf Labs Cortex-M3 bootloader.
     // Copyright (c) 2010 LeafLabs LLC.
     // Modified 2021 Brian Starkey <stark3y@gmail.com>
     // Originally under The MIT License
+
+    uint32_t reset_vector = *(volatile uint32_t*)(vtor + 0x04);
+    // uint32_t reset_vector = 0xf7400010;
 
     SCB->VTOR = (volatile uint32_t)(vtor);
 
@@ -204,21 +207,20 @@ int main(void) {
     uart_puts(uart1, "Hello, World!\r\n");
     sleep_ms(100);
 
+    // uint32_t vtor = (XIP_BASE + IMAGE_HEADER_OFFSET_1);
     uint32_t vtor = (XIP_BASE + IMAGE_HEADER_OFFSET_1);
-    // uint32_t vtor = *((uint32_t*)(XIP_BASE + IMAGE_HEADER_OFFSET_1));
     char text[32];
     uart_puts(uart1, "VTOR: ");
-    uint32_to_string(XIP_BASE + IMAGE_HEADER_OFFSET_1, text);
+    uint32_to_string(vtor, text);
     uart_puts(uart1, text);
     uart_puts(uart1, " - ");
-    uint32_to_string(vtor, text);
+    uint32_to_string((*(volatile uint32_t*)vtor), text);
     uart_puts(uart1, text);
     uart_puts(uart1, "\r\n");
 
-    // uint32_t reset_vtor = XIP_BASE + IMAGE_HEADER_OFFSET_1 + 0x04;
-    uint32_t reset_vtor = *((uint32_t*)(XIP_BASE + IMAGE_HEADER_OFFSET_1 + 0x04));
+    uint32_t reset_vtor = *((uint32_t*)(vtor + 0x04));
     uart_puts(uart1, "Reset VTOR: ");
-    uint32_to_string(XIP_BASE + IMAGE_HEADER_OFFSET_1 + 0x04, text);
+    uint32_to_string(vtor + 0x04, text);
     uart_puts(uart1, text);
     uart_puts(uart1, " - ");
     uint32_to_string(reset_vtor, text);
@@ -228,7 +230,8 @@ int main(void) {
 
     disable_interrupts();
     reset_peripherals();
-    jump_to_vtor(vtor, reset_vtor);
+
+    jump_to_vtor(vtor);
 
     // In an assembly snippet . . .
     // Set VTOR register, set stack pointer, and jump to reset

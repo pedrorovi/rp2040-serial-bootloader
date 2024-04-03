@@ -1,0 +1,7 @@
+CMakeFiles/
+elf2uf2/
+generated/
+pico-sdk/
+bootloader.*
+cmake*
+CMakeCache.txt

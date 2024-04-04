@@ -6,13 +6,13 @@
 # following conditions are met:
 #
 # 1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following
-#    disclaimer.
+# disclaimer.
 #
 # 2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the following
-#    disclaimer in the documentation and/or other materials provided with the distribution.
+# disclaimer in the documentation and/or other materials provided with the distribution.
 #
 # 3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote products
-#    derived from this software without specific prior written permission.
+# derived from this software without specific prior written permission.
 #
 # THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
 # INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
@@ -34,12 +34,11 @@ set(CMAKE_CXX_STANDARD 17)
 pico_sdk_init()
 
 # Build the bootloader as a standalone thing
-
 add_executable(bootloader main.c)
 
 function(target_cl_options option)
-    target_compile_options(bootloader PRIVATE ${option})
-    target_link_options(bootloader PRIVATE ${option})
+	target_compile_options(bootloader PRIVATE ${option})
+	target_link_options(bootloader PRIVATE ${option})
 endfunction()
 
 target_cl_options("-Os")
@@ -55,17 +54,16 @@ set_target_properties(bootloader PROPERTIES COMPILE_FLAGS "-Wall")
 pico_set_linker_script(bootloader ${CMAKE_CURRENT_SOURCE_DIR}/bootloader.ld)
 
 target_link_libraries(bootloader
-                      pico_stdlib
-                      hardware_dma
-                      hardware_flash
-                      hardware_structs
-                      hardware_resets
-                      cmsis_core)
+	pico_stdlib
+	hardware_dma
+	hardware_flash
+	hardware_structs
+	hardware_resets
+	cmsis_core)
 
 set(BOOTLOADER_DIR "${CMAKE_CURRENT_LIST_DIR}" CACHE INTERNAL "")
 
 # Build a library to embed into applications
-
 function(bootloader_define_library)
 	set(NAME bootloader)
 	set(ORIGINAL_BIN ${CMAKE_CURRENT_BINARY_DIR}/${NAME}.bin)
@@ -74,7 +72,7 @@ function(bootloader_define_library)
 	add_custom_target(${NAME}_bin DEPENDS ${ORIGINAL_BIN})
 	add_custom_command(OUTPUT ${ORIGINAL_BIN} DEPENDS ${NAME} COMMAND ${CMAKE_OBJCOPY} -Obinary $<TARGET_FILE:${NAME}> ${ORIGINAL_BIN})
 
-	find_package (Python3 REQUIRED COMPONENTS Interpreter)
+	find_package(Python3 REQUIRED COMPONENTS Interpreter)
 	add_custom_target(${NAME}_bin_asm DEPENDS ${BIN_ASM})
 	add_custom_command(OUTPUT ${BIN_ASM} DEPENDS ${ORIGINAL_BIN}
 		COMMAND ${Python3_EXECUTABLE} ${BOOTLOADER_DIR}/mkasm.py ${ORIGINAL_BIN} ${BIN_ASM}
@@ -82,14 +80,18 @@ function(bootloader_define_library)
 
 	add_library(${NAME}_library INTERFACE)
 	add_dependencies(${NAME}_library ${NAME}_bin_asm)
+
 	# not strictly (or indeed actually) a link library, but this avoids dependency cycle
 	target_link_libraries(${NAME}_library INTERFACE ${BIN_ASM})
 endfunction()
 
 bootloader_define_library()
 
-# Provide a helper to build a combined target
+# add_executable(app ~/projects/tools/pico-blink-noboot2/blink.c)
 
+# target_link_libraries(app pico_stdlib hardware_flash hardware_sync)
+
+# Provide a helper to build a combined target
 function(bootloader_build_combined NAME)
 	set(APP ${NAME}_app)
 	set(APP_BIN ${CMAKE_CURRENT_BINARY_DIR}/${APP}.bin)
@@ -105,8 +107,9 @@ function(bootloader_build_combined NAME)
 
 	# TODO: The hard-coded 16k here is a bit nasty
 	add_custom_target(${APP}_bin DEPENDS ${APP_BIN})
+
 	add_custom_command(OUTPUT ${APP_BIN} DEPENDS ${NAME}.bin
-		COMMAND dd ibs=1k iseek=16 if=${NAME}.bin of=${APP_BIN}
+		COMMAND dd ibs=1 skip=16 if=${NAME}.bin of=${APP_BIN}
 	)
 
 	# TODO: The hard-coded address here is a bit nasty
@@ -124,9 +127,14 @@ function(bootloader_build_combined NAME)
 	)
 endfunction()
 
-# Provide a helper to build a standalone target
+# bootloader_build_combined(app)
 
+# Provide a helper to build a standalone target
 function(bootloader_build_standalone NAME)
 	pico_set_linker_script(${NAME} ${BOOTLOADER_DIR}/standalone.ld)
 	pico_add_bin_output(${NAME})
 endfunction()
+
+# add_executable(blink ~/projects/tools/pico-blink-noboot2/blink.c)
+# target_link_libraries(blink pico_stdlib hardware_flash hardware_sync)
+# bootloader_build_standalone(blink)
